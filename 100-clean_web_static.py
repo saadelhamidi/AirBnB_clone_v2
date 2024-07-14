@@ -1,7 +1,5 @@
 #!/usr/bin/python3
-"""
-Fabric script to distribute an archive to web servers.
-"""
+"""Fabric script to distribute an archive to web servers."""
 
 from datetime import datetime
 from fabric.api import *
