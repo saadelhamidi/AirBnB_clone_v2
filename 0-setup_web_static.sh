@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# A Bash script that sets up your web servers for the deployment of web_static
+# This script sets up web servers for the deployment of web_static
 
-# Update and install Nginx
-apt-get -y update
-apt-get -y install nginx
+# Update package lists and install Nginx if not already installed
+if ! dpkg -l | grep -q nginx; then
+    apt-get update -y
+    apt-get install -y nginx
+fi
+
+# Allow 'Nginx HTTP' through the firewall
 ufw allow 'Nginx HTTP'
 
-# Define the directories to be created
+# Array of directories to be created
 directories=(
     "/data/"
     "/data/web_static/"
@@ -15,13 +19,13 @@ directories=(
     "/data/web_static/releases/test/"
 )
 
-# Create the directories if they don't exist
+# Create directories if they don't exist
 for dir in "${directories[@]}"; do
-    [ -d "$dir" ] || mkdir -p "$dir"
+    mkdir -p "$dir"
 done
 
-# Create a simple HTML file
-cat << 'EOF' > /data/web_static/releases/test/index.html
+# Create a simple HTML file using a heredoc
+cat > /data/web_static/releases/test/index.html << 'EOF'
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -42,9 +46,7 @@ cat << 'EOF' > /data/web_static/releases/test/index.html
     </style>
 </head>
 <body>
-
     <h1>Welcome to My test HTML Page</h1>
-
     <p>This is a basic HTML page.</p>
     <h2>My favorite programming languages are:</h2>
     <ul>
@@ -55,22 +57,21 @@ cat << 'EOF' > /data/web_static/releases/test/index.html
         <li>SQL</li>
         <li>JavaScript (js)</li>
     </ul>
-
 </body>
 </html>
 EOF
 
 # Create a symbolic link to the test directory
-ln -sf /data/web_static/releases/test/ /data/web_static/current
+ln -sfn /data/web_static/releases/test/ /data/web_static/current
 
-# Set ownership of the /data/ directory to ubuntu user and group
+# Change ownership of the /data/ directory to the 'ubuntu' user and group
 chown -R ubuntu:ubuntu /data/
 
-# Create a custom 404 page
+# Create a custom 404 page using echo
 echo "Ceci n'est pas une page" > /data/web_static/releases/test/404.html
 
-# Configure Nginx
-cat << 'EOL' > /etc/nginx/sites-available/default
+# Configure Nginx to serve the content
+cat > /etc/nginx/sites-available/default << 'EOL'
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
@@ -81,14 +82,14 @@ server {
     location /redirect_me {
         return 301 http://localhost/new_page;
     }
-    
+
     error_page 404 /404.html;
     location = /404.html {
         internal;
     }
-    
+
     location /hbnb_static/ {
-        alias /data/web_static/releases/test/;
+        alias /data/web_static/current/;
     }
 
     location / {
@@ -97,5 +98,5 @@ server {
 }
 EOL
 
-# Restart Nginx to apply the changes
+# Restart Nginx to apply the new configuration
 service nginx restart
