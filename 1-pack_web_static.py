@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # A Bash script that sets up your web servers for the deployment of web_static
 
-# Update and install Nginx
-apt-get -y update
-apt-get -y install nginx
+# Update package list and install Nginx
+apt-get update -y
+apt-get install -y nginx
+
+# Allow 'Nginx HTTP' through the firewall
 ufw allow 'Nginx HTTP'
 
-# Define the directories to be created
+# Array of directories to be created
 directories=(
     "/data/"
     "/data/web_static/"
@@ -15,9 +17,9 @@ directories=(
     "/data/web_static/releases/test/"
 )
 
-# Create the directories if they don't exist
+# Create directories if they don't exist
 for dir in "${directories[@]}"; do
-    [ -d "$dir" ] || mkdir -p "$dir"
+    [ ! -d "$dir" ] && mkdir -p "$dir"
 done
 
 # Create a simple HTML file
@@ -63,13 +65,13 @@ EOF
 # Create a symbolic link to the test directory
 ln -sf /data/web_static/releases/test/ /data/web_static/current
 
-# Set ownership of the /data/ directory to ubuntu user and group
+# Change ownership of the /data/ directory to the 'ubuntu' user and group
 chown -R ubuntu:ubuntu /data/
 
 # Create a custom 404 page
 echo "Ceci n'est pas une page" > /data/web_static/releases/test/404.html
 
-# Configure Nginx
+# Configure Nginx to serve the content
 cat << 'EOL' > /etc/nginx/sites-available/default
 server {
     listen 80 default_server;
@@ -97,5 +99,5 @@ server {
 }
 EOL
 
-# Restart Nginx to apply the changes
+# Restart Nginx to apply the new configuration
 service nginx restart
