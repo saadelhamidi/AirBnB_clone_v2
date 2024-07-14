@@ -2,47 +2,81 @@
 """
 Fabric script that distributes an archive to your web servers
 """
-from fabric.api import env, put, run
+
+from datetime import datetime
+from fabric import Connection, task
 import os
 
-env.hosts = ['<IP web-01>', '<IP web-02>']  # Replace with your web server IPs
+env.hosts = ["34.229.66.77", "18.209.225.222"]
+env.user = "ubuntu"
+env.password = "betty"
 
-def do_deploy(archive_path):
-    """Distributes an archive to the web servers"""
-    if not os.path.exists(archive_path):
-        return False
-    
-    try:
-        # Extract the archive name without extension
+
+@task
+def do_deploy(c, archive_path):
+    """
+    Distribute archive.
+    """
+    if os.path.exists(archive_path):
         archive_name = os.path.basename(archive_path)
-        archive_name_no_ext = archive_name.split('.')[0]
+        archive_basename = os.path.splitext(archive_name)[0]
+        remote_path = "/data/web_static/releases/"
 
-        # Define paths
-        remote_tmp_path = f"/tmp/{archive_name}"
-        release_dir = f"/data/web_static/releases/{archive_name_no_ext}/"
+        # Upload archive to /tmp/ on the server
+        c.put(archive_path, "/tmp/")
 
-        # Upload the archive to the /tmp/ directory on the web server
-        put(archive_path, remote_tmp_path)
+        # Create necessary directories
+        c.sudo(f"mkdir -p {remote_path}{archive_basename}")
 
-        # Uncompress the archive to the release directory
-        run(f"mkdir -p {release_dir}")
-        run(f"tar -xzf {remote_tmp_path} -C {release_dir}")
-        
-        # Remove the archive from the web server
-        run(f"rm {remote_tmp_path}")
+        # Extract archive
+        c.sudo(f"tar -xzf /tmp/{archive_name} -C {remote_path}{archive_basename}/")
 
-        # Move contents out of the web_static subdirectory
-        run(f"mv {release_dir}web_static/* {release_dir}")
+        # Remove archive from /tmp/
+        c.sudo(f"rm /tmp/{archive_name}")
 
-        # Remove the empty web_static subdirectory
-        run(f"rm -rf {release_dir}web_static")
+        # Move contents to proper location
+        c.sudo(f"mv {remote_path}{archive_basename}/web_static/* {remote_path}{archive_basename}/")
 
-        # Delete the existing symbolic link
-        run("rm -rf /data/web_static/current")
+        # Remove redundant web_static directory
+        c.sudo(f"rm -rf {remote_path}{archive_basename}/web_static/")
 
-        # Create a new symbolic link
-        run(f"ln -s {release_dir} /data/web_static/current")
+        # Update symbolic link
+        c.sudo(f"rm -rf /data/web_static/current")
+        c.sudo(f"ln -s {remote_path}{archive_basename}/ /data/web_static/current")
 
+        # Configure Nginx
+        nginx_config = """
+        server {
+            listen 80 default_server;
+            listen [::]:80 default_server;
+
+            root /data/web_static/releases/{};
+            index index.html;
+
+            location /redirect_me {{
+                return 301 http://localhost/new_page;
+            }}
+
+            error_page 404 /404.html;
+            location = /404.html {{
+                internal;
+            }}
+
+            location /hbnb_static/ {{
+                alias /data/web_static/current/;
+            }}
+
+            location / {{
+                add_header X-Served-By "$(hostname)";
+            }}
+        }}
+        """.format(archive_basename)
+
+        # Write and reload Nginx configuration
+        c.sudo(f"echo '{nginx_config}' | tee /etc/nginx/sites-available/default")
+        c.sudo("service nginx reload")
+
+        print("New version deployed!")
         return True
-    except:
-        return False
+
+    return False
